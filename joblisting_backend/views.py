@@ -5,7 +5,13 @@ from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from .serializers import RegisterSerializer, LoginSerializer, JobSerializer
 from joblistingapp.models import Job as job
-
+from django.http import JsonResponse
+from rest_framework_simplejwt.tokens import AccessToken
+from rest_framework.pagination import PageNumberPagination
+class JobsPagination(PageNumberPagination):
+    max_page_size=100
+    page_size_query_param='page_size'
+    page_size=5
 class CreateJob(APIView):
     """
     API endpoint for managing job creation and retrieval for an authenticated user.
@@ -17,8 +23,11 @@ class CreateJob(APIView):
         Retrieve all jobs created by the authenticated user.
         """
         jobs = job.objects.filter(user=request.user)
-        serializer = JobSerializer(jobs, many=True)
-        return Response(serializer.data, status=status.HTTP_200_OK)
+        paginator = JobsPagination()
+        paginated_jobs = paginator.paginate_queryset(jobs, request)
+        serializer = JobSerializer(paginated_jobs, many=True)
+        return paginator.get_paginated_response(serializer.data)
+
 
     def post(self, request):
         """
@@ -42,7 +51,9 @@ class Jobs(APIView):
         jobs = job.objects.all()
         if not jobs.exists():
             return Response({'error': 'No jobs found'}, status=status.HTTP_204_NO_CONTENT)
-        serializer = JobSerializer(jobs, many=True)
+        paginator = JobsPagination()
+        paginated_jobs = paginator.paginate_queryset(jobs, request)
+        serializer = JobSerializer(paginated_jobs, many=True)
         return Response(serializer.data)
 
     def post(self, request):
@@ -81,7 +92,18 @@ class Login(APIView):
         """
         serializer = LoginSerializer(data=request.data)
         if serializer.is_valid():
-            return Response(serializer.validated_data, status=status.HTTP_200_OK)
+            access_token = serializer.validated_data['access']
+
+            # Set token in HttpOnly cookie
+            response = JsonResponse({'message': 'Login successful!'})
+            response.set_cookie(
+                key='access_token',
+                value=access_token,
+                httponly=True,
+                secure=False,  # Set to True in production with HTTPS
+                samesite='Lax'
+            )
+            return response
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
