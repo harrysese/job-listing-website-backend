@@ -2,6 +2,7 @@ from django.shortcuts import get_object_or_404
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
+from django.db.models import Q
 from rest_framework.permissions import IsAuthenticated
 from .serializers import RegisterSerializer, LoginSerializer, JobSerializer
 from joblistingapp.models import Job as job
@@ -12,6 +13,8 @@ class JobsPagination(PageNumberPagination):
     max_page_size=100
     page_size_query_param='page_size'
     page_size=5
+    
+
 class CreateJob(APIView):
     """
     API endpoint for managing job creation and retrieval for an authenticated user.
@@ -48,13 +51,20 @@ class Jobs(APIView):
         """
         Retrieve all job listings in the system.
         """
-        jobs = job.objects.all()
-        if not jobs.exists():
-            return Response({'error': 'No jobs found'}, status=status.HTTP_204_NO_CONTENT)
+        query=request.GET.get('q', '')
+        print(query)
+        if query:
+            jobs=job.objects.filter(Q (title__icontains=query)|Q (companyname__icontains=query))
+        else:
+            jobs=job.objects.all()
+            if not jobs.exists():
+                return Response({'error': 'No job found'}, status=status.HTTP_204_NO_CONTENT)
+        jobs=jobs.order_by('id')
         paginator = JobsPagination()
         paginated_jobs = paginator.paginate_queryset(jobs, request)
         serializer = JobSerializer(paginated_jobs, many=True)
-        return Response(serializer.data)
+        return Response(serializer.data ,status=status.HTTP_200_OK)
+        
 
     def post(self, request):
         """
